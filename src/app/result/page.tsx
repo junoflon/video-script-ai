@@ -138,6 +138,27 @@ function formatDuration(ms: number): string {
   return `${m}분 ${s}초`;
 }
 
+function parseStructured(data: unknown): StructuredSummary {
+  let obj = data;
+  // If it's a string, parse it
+  if (typeof obj === "string") {
+    try {
+      const jsonMatch = (obj as string).match(/\{[\s\S]*\}/);
+      obj = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(obj as string);
+    } catch {
+      return { oneSentence: "", keyPoints: [], sections: [], keywords: [], fullSummary: obj as string };
+    }
+  }
+  const o = obj as Record<string, unknown>;
+  return {
+    oneSentence: (o.oneSentence as string) || "",
+    keyPoints: Array.isArray(o.keyPoints) ? o.keyPoints : [],
+    sections: Array.isArray(o.sections) ? o.sections : [],
+    keywords: Array.isArray(o.keywords) ? o.keywords : [],
+    fullSummary: (o.fullSummary as string) || "",
+  };
+}
+
 const stepMessages: Record<AnalysisStep, { title: string; desc: string }> = {
   idle: { title: "대기 중", desc: "" },
   extracting: { title: "자막을 추출하고 있습니다", desc: "YouTube에서 자막 데이터를 가져오는 중..." },
@@ -214,7 +235,7 @@ function ResultContent() {
       setVideoId(a.videoId);
       setTranscript(a.transcript || []);
       setFullText(a.fullText || "");
-      setStructured(a.structuredSummary);
+      setStructured(parseStructured(a.structuredSummary));
       setMeta({
         title: a.videoTitle || "",
         author: a.videoAuthor || "",
@@ -296,7 +317,7 @@ function ResultContent() {
           });
           const summaryData = await summaryRes.json();
           if (!summaryRes.ok) throw new Error(summaryData.error);
-          setStructured(summaryData.structured);
+          setStructured(parseStructured(summaryData.structured));
           setStep("done");
         } catch (err) {
           setError(err instanceof Error ? err.message : "요약 실패");
@@ -347,7 +368,7 @@ function ResultContent() {
       const summaryData = await summaryRes.json();
       if (!summaryRes.ok) throw new Error(summaryData.error);
 
-      setStructured(summaryData.structured);
+      setStructured(parseStructured(summaryData.structured));
       setStep("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "분석 중 오류가 발생했습니다.");
