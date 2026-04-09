@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Workspace {
+  id         String   @id @default(cuid())
+  name       String
+  accessCode String   @unique @map("access_code")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  members   Member[]
+  projects  Project[]
+  templates Template[]
+
+  @@map("workspaces")
+}
+
+model Member {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  nickname    String
+  role        String   @default("member") // "admin" | "member"
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  analyses  Analysis[]
+  comments  Comment[]
+  templates Template[]
+
+  @@map("members")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  description String?
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  analyses  Analysis[]
+
+  @@map("projects")
+}
+
+model Analysis {
+  id                String   @id @default(cuid())
+  projectId         String   @map("project_id")
+  memberId          String   @map("member_id")
+  videoUrl          String   @map("video_url")
+  videoId           String   @map("video_id")
+  videoTitle        String?  @map("video_title")
+  videoAuthor       String?  @map("video_author")
+  thumbnailUrl      String?  @map("thumbnail_url")
+  transcript        Json?
+  fullText          String?  @map("full_text")
+  structuredSummary Json?    @map("structured_summary")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  member   Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  comments Comment[]
+
+  @@map("analyses")
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  analysisId String   @map("analysis_id")
+  memberId   String   @map("member_id")
+  content    String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  member   Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
+
+model Template {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  type        String   @default("custom") // "blog" | "presentation" | "study" | "custom"
+  prompt      String
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator   Member    @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@map("templates")
+}

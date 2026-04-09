@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 /* ───────────────── Icons (inline SVG) ───────────────── */
 
@@ -139,6 +140,34 @@ const steps = [
 export default function Home() {
   const [url, setUrl] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const [inputMode, setInputMode] = useState<"url" | "file">("url");
+  const [uploading, setUploading] = useState(false);
+  const router = useRouter();
+
+  const handleAnalyze = () => {
+    if (!url.trim()) return;
+    router.push(`/result?url=${encodeURIComponent(url.trim())}`);
+  };
+
+  const handleFileUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      // Store transcribe result in sessionStorage and navigate
+      sessionStorage.setItem("sf_transcribe", JSON.stringify(data));
+      router.push("/result?source=file");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "파일 업로드 실패");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
     <main className="flex-1">
@@ -166,8 +195,8 @@ export default function Home() {
             >
               사용법
             </a>
-            <button className="px-4 py-2 rounded-lg bg-surface border border-border hover:bg-surface-hover transition-all text-foreground text-sm">
-              시작하기
+            <button onClick={() => router.push("/workspace/new")} className="px-4 py-2 rounded-lg bg-surface border border-border hover:bg-surface-hover transition-all text-foreground text-sm">
+              워크스페이스
             </button>
           </nav>
         </div>
@@ -202,34 +231,98 @@ export default function Home() {
           AI가 영상을 분석하고, 핵심을 정리하고, 원하는 형태로 변환합니다.
         </p>
 
-        {/* URL Input */}
+        {/* Input Tabs */}
         <div className="animate-fade-up delay-4 max-w-2xl mx-auto">
-          <div
-            className={`input-glow rounded-2xl ${isFocused ? "focused" : ""}`}
-          >
-            <div className="relative flex items-center bg-surface border border-border rounded-2xl px-5 py-4 gap-3 transition-all">
-              <LinkIcon className="w-5 h-5 text-muted flex-shrink-0" />
-              <input
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
-                placeholder="YouTube URL을 붙여넣으세요"
-                className="flex-1 bg-transparent outline-none text-foreground placeholder:text-muted/50 text-base"
-              />
-              <button
-                className="shimmer-btn flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent to-accent-warm text-[#0b0b0f] font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-40"
-                disabled={!url.trim()}
-              >
-                분석하기
-                <ArrowRightIcon className="w-4 h-4" />
-              </button>
-            </div>
+          {/* Source toggle */}
+          <div className="flex gap-1 p-1 rounded-xl bg-surface border border-border mb-4 w-fit mx-auto">
+            <button
+              onClick={() => setInputMode("url")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                inputMode === "url"
+                  ? "bg-gradient-to-r from-accent to-accent-warm text-[#0b0b0f]"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              URL 입력
+            </button>
+            <button
+              onClick={() => setInputMode("file")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                inputMode === "file"
+                  ? "bg-gradient-to-r from-accent to-accent-warm text-[#0b0b0f]"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              파일 첨부
+            </button>
           </div>
-          <p className="text-xs text-muted/50 mt-3">
-            예: https://youtube.com/watch?v=...
-          </p>
+
+          {inputMode === "url" ? (
+            <>
+              <div
+                className={`input-glow rounded-2xl ${isFocused ? "focused" : ""}`}
+              >
+                <div className="relative flex items-center bg-surface border border-border rounded-2xl px-5 py-4 gap-3 transition-all">
+                  <LinkIcon className="w-5 h-5 text-muted flex-shrink-0" />
+                  <input
+                    type="url"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+                    placeholder="YouTube, Instagram, TikTok URL을 붙여넣으세요"
+                    className="flex-1 bg-transparent outline-none text-foreground placeholder:text-muted/50 text-base"
+                  />
+                  <button
+                    className="shimmer-btn flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent to-accent-warm text-[#0b0b0f] font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-40"
+                    disabled={!url.trim()}
+                    onClick={handleAnalyze}
+                  >
+                    분석하기
+                    <ArrowRightIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-center gap-4 mt-3 text-xs text-muted/50">
+                <span>YouTube</span>
+                <span>·</span>
+                <span>Instagram</span>
+                <span>·</span>
+                <span>TikTok</span>
+              </div>
+            </>
+          ) : (
+            <label
+              className={`block cursor-pointer rounded-2xl border-2 border-dashed border-border hover:border-accent/40 bg-surface/50 transition-all p-10 text-center ${
+                uploading ? "opacity-50 pointer-events-none" : ""
+              }`}
+            >
+              <input
+                type="file"
+                accept="video/*,audio/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileUpload(file);
+                }}
+              />
+              {uploading ? (
+                <div>
+                  <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-sm text-muted">영상을 분석하고 있습니다...</p>
+                </div>
+              ) : (
+                <div>
+                  <div className="w-12 h-12 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto mb-4">
+                    <ArrowRightIcon className="w-5 h-5 text-accent rotate-90" />
+                  </div>
+                  <p className="text-sm text-foreground mb-1">영상/오디오 파일을 드래그하거나 클릭하세요</p>
+                  <p className="text-xs text-muted/50">MP4, MP3, WAV, M4A 등</p>
+                </div>
+              )}
+            </label>
+          )}
         </div>
       </section>
 

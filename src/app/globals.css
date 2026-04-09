@@ -208,3 +208,50 @@ body {
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--border-color), transparent);
 }
+
+/* Gradient text inline (for headings in summary) */
+.gradient-text-inline {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-warm) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: inline-block;
+}
+
+/* Spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Pulse */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Prose custom for markdown content */
+.prose-custom h1,
+.prose-custom h2,
+.prose-custom h3 {
+  margin-top: 1.5rem;
+}
+
+.prose-custom h2:first-child,
+.prose-custom h1:first-child {
+  margin-top: 0;
+}
+
+.prose-custom ul {
+  list-style-type: disc;
+  padding-left: 0;
+}
+
+.prose-custom li::marker {
+  color: var(--accent);
+}
