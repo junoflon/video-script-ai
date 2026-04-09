@@ -35,7 +35,12 @@ interface StructuredSummary {
 
 type AnalysisStep = "idle" | "extracting" | "summarizing" | "done" | "error";
 type ConvertFormat = "blog" | "presentation" | "study";
-type ActiveTab = "summary" | "transcript" | "convert";
+type ActiveTab = "summary" | "transcript" | "convert" | "chat";
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
 
 /* ───────────────── Icons ───────────────── */
 
@@ -98,6 +103,14 @@ function PenIcon({ className = "w-5 h-5" }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 20h9" />
       <path d="M16.376 3.622a1 1 0 013.002 3.002L7.368 18.635a2 2 0 01-.855.506l-2.872.838a.5.5 0 01-.62-.62l.838-2.872a2 2 0 01.506-.854z" />
+    </svg>
+  );
+}
+
+function ChatIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
     </svg>
   );
 }
@@ -218,6 +231,12 @@ function ResultContent() {
   // PDF state
   const [isExporting, setIsExporting] = useState(false);
 
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   // Comments state
   const [comments, setComments] = useState<{ id: string; content: string; createdAt: string; member: { nickname: string } }[]>([]);
   const [newComment, setNewComment] = useState("");
@@ -252,6 +271,38 @@ function ResultContent() {
       return false;
     }
   }, [analysisId]);
+
+  const handleChat = async () => {
+    if (!chatInput.trim() || chatLoading) return;
+    const question = chatInput.trim();
+    setChatInput("");
+    setChatMessages((prev) => [...prev, { role: "user", content: question }]);
+    setChatLoading(true);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          fullText,
+          videoTitle: meta?.title || "",
+          history: chatMessages,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setChatMessages((prev) => [...prev, { role: "assistant", content: data.answer }]);
+    } catch (err) {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `오류: ${err instanceof Error ? err.message : "답변 생성 실패"}` },
+      ]);
+    } finally {
+      setChatLoading(false);
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    }
+  };
 
   const handleAddComment = async () => {
     if (!newComment.trim() || !analysisId) return;
@@ -601,6 +652,7 @@ function ResultContent() {
                   { key: "summary" as ActiveTab, label: "AI 요약", icon: null },
                   { key: "transcript" as ActiveTab, label: "자막", icon: <SubtitleIcon className="w-3.5 h-3.5" /> },
                   { key: "convert" as ActiveTab, label: "변환", icon: <PenIcon className="w-3.5 h-3.5" /> },
+                  { key: "chat" as ActiveTab, label: "Q&A", icon: <ChatIcon className="w-3.5 h-3.5" /> },
                 ]).map((tab) => (
                   <button
                     key={tab.key}
@@ -832,6 +884,92 @@ function ResultContent() {
                     />
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ─── Chat Tab ─── */}
+            {activeTab === "chat" && (
+              <div className="max-w-3xl">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold mb-1">영상 Q&A</h2>
+                  <p className="text-sm text-muted">영상 내용에 대해 자유롭게 질문하세요. AI가 자막을 기반으로 답변합니다.</p>
+                </div>
+
+                {/* Chat messages */}
+                <div className="space-y-4 mb-6 max-h-[500px] overflow-y-auto pr-2">
+                  {chatMessages.length === 0 && (
+                    <div className="text-center py-12">
+                      <ChatIcon className="w-8 h-8 text-muted/30 mx-auto mb-3" />
+                      <p className="text-muted/50 text-sm">질문을 입력하면 AI가 영상 내용을 기반으로 답변합니다.</p>
+                      <div className="flex flex-wrap gap-2 justify-center mt-4">
+                        {["이 영상의 핵심 메시지는?", "가장 중요한 3가지 포인트는?", "실무에 어떻게 적용할 수 있을까?"].map((q) => (
+                          <button
+                            key={q}
+                            onClick={() => { setChatInput(q); }}
+                            className="px-3 py-1.5 rounded-lg bg-surface border border-border text-xs text-muted hover:text-foreground hover:border-accent/30 transition-all"
+                          >
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {chatMessages.map((msg, i) => (
+                    <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}>
+                      {msg.role === "assistant" && (
+                        <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-1">
+                          <ChatIcon className="w-3.5 h-3.5 text-accent" />
+                        </div>
+                      )}
+                      <div
+                        className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
+                          msg.role === "user"
+                            ? "bg-accent/15 text-foreground"
+                            : "bg-surface border border-border"
+                        }`}
+                      >
+                        {msg.role === "assistant" ? (
+                          <div className="prose-custom" dangerouslySetInnerHTML={{ __html: markdownToHtml(msg.content) }} />
+                        ) : (
+                          <p>{msg.content}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {chatLoading && (
+                    <div className="flex gap-3">
+                      <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+                        <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                      </div>
+                      <div className="bg-surface border border-border rounded-2xl px-4 py-3">
+                        <p className="text-sm text-muted">답변을 생성하고 있습니다...</p>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Chat input */}
+                <div className="flex gap-3 sticky bottom-4">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleChat()}
+                    placeholder="영상에 대해 질문하세요..."
+                    disabled={chatLoading}
+                    className="flex-1 px-4 py-3 rounded-xl bg-surface border border-border text-foreground placeholder:text-muted/50 outline-none focus:border-accent/50 transition-colors text-sm disabled:opacity-50"
+                  />
+                  <button
+                    onClick={handleChat}
+                    disabled={chatLoading || !chatInput.trim()}
+                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-accent to-accent-warm text-[#0b0b0f] font-semibold text-sm disabled:opacity-40"
+                  >
+                    전송
+                  </button>
+                </div>
               </div>
             )}
           </div>
