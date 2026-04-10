@@ -25,11 +25,31 @@ function detectSource(url: string): SourceType | null {
   return null;
 }
 
+async function findYtDlp(): Promise<string> {
+  // Check common paths
+  const paths = [
+    "yt-dlp",
+    "/usr/local/bin/yt-dlp",
+    "/opt/homebrew/bin/yt-dlp",
+    "/usr/bin/yt-dlp",
+  ];
+  for (const p of paths) {
+    try {
+      await execAsync(`${p} --version`);
+      return p;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error("yt-dlp를 찾을 수 없습니다. 서버에 yt-dlp가 설치되어 있는지 확인하세요.");
+}
+
 async function downloadAudio(url: string, tmpDir: string): Promise<string> {
   const outputPath = path.join(tmpDir, "audio.mp3");
+  const ytdlp = await findYtDlp();
 
   await execAsync(
-    `yt-dlp -x --audio-format mp3 --audio-quality 5 -o "${path.join(tmpDir, "audio.%(ext)s")}" "${url}"`,
+    `${ytdlp} -x --audio-format mp3 --audio-quality 5 -o "${path.join(tmpDir, "audio.%(ext)s")}" "${url}"`,
     { timeout: 120000 }
   );
 
@@ -52,8 +72,9 @@ async function downloadAudio(url: string, tmpDir: string): Promise<string> {
 
 async function fetchVideoMeta(url: string): Promise<{ title: string; author: string; thumbnailUrl: string } | null> {
   try {
+    const ytdlp = await findYtDlp();
     const { stdout } = await execAsync(
-      `yt-dlp --dump-json --no-download "${url}"`,
+      `${ytdlp} --dump-json --no-download "${url}"`,
       { timeout: 30000 }
     );
     const data = JSON.parse(stdout);
