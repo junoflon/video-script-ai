@@ -384,18 +384,41 @@ function ResultContent() {
     setError("");
 
     try {
-      // Use transcribe API for Instagram/TikTok, transcript API for YouTube
+      let transcriptData;
+
+      // Try YouTube subtitle API first, fall back to Whisper
       const isYouTube = /youtube\.com|youtu\.be/.test(videoUrl);
-      const apiUrl = isYouTube ? "/api/transcript" : "/api/transcribe";
 
-      const transcriptRes = await fetch(apiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: videoUrl }),
-      });
+      if (isYouTube) {
+        const ytRes = await fetch("/api/transcript", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: videoUrl }),
+        });
 
-      const transcriptData = await transcriptRes.json();
-      if (!transcriptRes.ok) throw new Error(transcriptData.error);
+        if (ytRes.ok) {
+          transcriptData = await ytRes.json();
+        } else {
+          // YouTube subtitle failed → fallback to Whisper
+          setStep("extracting");
+          const whisperRes = await fetch("/api/transcribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: videoUrl }),
+          });
+          transcriptData = await whisperRes.json();
+          if (!whisperRes.ok) throw new Error(transcriptData.error);
+        }
+      } else {
+        // Instagram/TikTok → use transcribe API directly
+        const res = await fetch("/api/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: videoUrl }),
+        });
+        transcriptData = await res.json();
+        if (!res.ok) throw new Error(transcriptData.error);
+      }
 
       setTranscript(transcriptData.transcript);
       setVideoId(transcriptData.videoId || "");
