@@ -5,6 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 
 interface Member { id: string; nickname: string; role: string; }
 interface Project { id: string; name: string; description: string | null; updatedAt: string; }
+interface Template {
+  id: string;
+  name: string;
+  type: string;
+  prompt: string;
+  creator: { nickname: string };
+}
 interface WorkspaceData {
   id: string; name: string; accessCode: string;
   members: Member[]; projects: Project[];
@@ -23,10 +30,23 @@ export default function WorkspaceDashboard() {
   const [newProjectName, setNewProjectName] = useState("");
   const [creating, setCreating] = useState(false);
 
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [showNewTemplate, setShowNewTemplate] = useState(false);
+  const [tplName, setTplName] = useState("");
+  const [tplPrompt, setTplPrompt] = useState("");
+  const [tplSaving, setTplSaving] = useState(false);
+  const [editingTplId, setEditingTplId] = useState<string | null>(null);
+
   const loadWorkspace = useCallback(async (wsId: string) => {
     const res = await fetch(`/api/workspace?id=${wsId}`);
     const data = await res.json();
     if (res.ok) setWorkspace(data.workspace);
+  }, []);
+
+  const loadTemplates = useCallback(async (wsId: string) => {
+    const res = await fetch(`/api/template?workspaceId=${wsId}`);
+    const data = await res.json();
+    if (res.ok) setTemplates(data.templates);
   }, []);
 
   useEffect(() => {
@@ -41,8 +61,71 @@ export default function WorkspaceDashboard() {
       return;
     }
     setSession(sess);
-    loadWorkspace(sess.workspaceId).finally(() => setLoading(false));
-  }, [code, router, loadWorkspace]);
+    Promise.all([
+      loadWorkspace(sess.workspaceId),
+      loadTemplates(sess.workspaceId),
+    ]).finally(() => setLoading(false));
+  }, [code, router, loadWorkspace, loadTemplates]);
+
+  const resetTplForm = () => {
+    setTplName("");
+    setTplPrompt("");
+    setEditingTplId(null);
+    setShowNewTemplate(false);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!tplName.trim() || !tplPrompt.trim() || !session) return;
+    setTplSaving(true);
+    try {
+      if (editingTplId) {
+        await fetch("/api/template", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: editingTplId,
+            name: tplName.trim(),
+            type: "custom",
+            prompt: tplPrompt.trim(),
+          }),
+        });
+      } else {
+        await fetch("/api/template", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workspaceId: session.workspaceId,
+            name: tplName.trim(),
+            type: "custom",
+            prompt: tplPrompt.trim(),
+            memberId: session.memberId,
+          }),
+        });
+      }
+      resetTplForm();
+      loadTemplates(session.workspaceId);
+    } finally {
+      setTplSaving(false);
+    }
+  };
+
+  const handleEditTemplate = (t: Template) => {
+    setEditingTplId(t.id);
+    setTplName(t.name);
+    setTplPrompt(t.prompt);
+    setShowNewTemplate(true);
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (!session) return;
+    if (!confirm("이 템플릿을 삭제할까요?")) return;
+    await fetch("/api/template", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    loadTemplates(session.workspaceId);
+  };
 
   const handleCreateProject = async () => {
     if (!newProjectName.trim() || !session) return;
@@ -162,6 +245,85 @@ export default function WorkspaceDashboard() {
                   {new Date(project.updatedAt).toLocaleDateString("ko-KR")}
                 </p>
               </button>
+            ))}
+          </div>
+        )}
+
+        {/* Custom templates */}
+        <div className="flex items-center justify-between mt-12 mb-4">
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">커스텀 템플릿</h2>
+          <button
+            onClick={() => { resetTplForm(); setShowNewTemplate(true); }}
+            className="text-xs px-3 py-1.5 rounded-lg bg-surface border border-border text-muted hover:text-foreground transition-colors"
+          >
+            + 새 템플릿
+          </button>
+        </div>
+
+        {showNewTemplate && (
+          <div className="glass-card p-5 mb-4 space-y-3">
+            <input
+              type="text"
+              value={tplName}
+              onChange={(e) => setTplName(e.target.value)}
+              placeholder="템플릿 이름 (예: 인스타 캡션, 뉴스레터)"
+              className="w-full px-4 py-2.5 rounded-lg bg-surface border border-border text-foreground placeholder:text-muted/50 outline-none focus:border-accent/50 transition-colors text-sm"
+              autoFocus
+            />
+            <textarea
+              value={tplPrompt}
+              onChange={(e) => setTplPrompt(e.target.value)}
+              placeholder={"AI에게 줄 지시문을 작성하세요.\n예: 당신은 인스타 캡션 작가입니다. 자막을 200자 이내의 후킹 강한 캡션으로 변환하고, 해시태그 5개를 붙여주세요."}
+              rows={6}
+              className="w-full px-4 py-3 rounded-lg bg-surface border border-border text-foreground placeholder:text-muted/40 outline-none focus:border-accent/50 transition-colors text-sm font-mono leading-relaxed resize-y"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={resetTplForm}
+                className="px-4 py-2 rounded-lg bg-surface border border-border text-sm text-muted"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSaveTemplate}
+                disabled={tplSaving || !tplName.trim() || !tplPrompt.trim()}
+                className="px-5 py-2 rounded-lg bg-accent text-[#0b0b0f] font-semibold text-sm disabled:opacity-40"
+              >
+                {tplSaving ? "..." : editingTplId ? "수정" : "저장"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {templates.length === 0 ? (
+          <div className="glass-card p-8 text-center">
+            <p className="text-muted text-sm mb-1">아직 커스텀 템플릿이 없습니다</p>
+            <p className="text-muted/50 text-xs">분석 결과를 팀의 톤앤매너로 변환할 수 있도록 템플릿을 만들어보세요.</p>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-3">
+            {templates.map((t) => (
+              <div key={t.id} className="glass-card p-4">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h3 className="font-semibold text-foreground text-sm">{t.name}</h3>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => handleEditTemplate(t)}
+                      className="text-xs text-muted hover:text-foreground px-2 py-1"
+                    >
+                      수정
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTemplate(t.id)}
+                      className="text-xs text-muted hover:text-red-400 px-2 py-1"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted/70 line-clamp-3 whitespace-pre-wrap">{t.prompt}</p>
+                <p className="text-xs text-muted/40 mt-2">by {t.creator.nickname}</p>
+              </div>
             ))}
           </div>
         )}

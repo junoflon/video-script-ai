@@ -41,7 +41,7 @@ const FORMAT_PROMPTS: Record<string, string> = {
 
 export async function POST(request: NextRequest) {
   try {
-    const { fullText, format, videoId } = await request.json();
+    const { fullText, format, videoId, customPrompt } = await request.json();
 
     if (!fullText || typeof fullText !== "string") {
       return Response.json(
@@ -50,10 +50,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const systemPrompt = FORMAT_PROMPTS[format];
+    const systemPrompt =
+      typeof customPrompt === "string" && customPrompt.trim().length > 0
+        ? customPrompt.trim()
+        : FORMAT_PROMPTS[format];
+
     if (!systemPrompt) {
       return Response.json(
-        { error: "지원하지 않는 형식입니다. (blog, presentation, study)" },
+        { error: "지원하지 않는 형식입니다. (blog, presentation, study 또는 customPrompt)" },
         { status: 400 }
       );
     }
@@ -76,7 +80,7 @@ export async function POST(request: NextRequest) {
     const result =
       message.content[0].type === "text" ? message.content[0].text : "";
 
-    return Response.json({ result, format, videoId });
+    return Response.json({ result, format: format || "custom", videoId });
   } catch (error) {
     const msg =
       error instanceof Error ? error.message : "변환 중 오류가 발생했습니다.";

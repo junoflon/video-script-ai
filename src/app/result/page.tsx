@@ -227,6 +227,10 @@ function ResultContent() {
   const [convertResult, setConvertResult] = useState("");
   const [isConverting, setIsConverting] = useState(false);
   const [convertError, setConvertError] = useState("");
+  const [convertLabel, setConvertLabel] = useState<string>("블로그 포스트");
+
+  // Custom templates (workspace mode)
+  const [templates, setTemplates] = useState<{ id: string; name: string; prompt: string }[]>([]);
 
   // PDF state
   const [isExporting, setIsExporting] = useState(false);
@@ -454,6 +458,23 @@ function ResultContent() {
     analyze();
   }, [analyze]);
 
+  // Load workspace templates when in workspace mode
+  useEffect(() => {
+    if (!workspaceCode) return;
+    const stored = localStorage.getItem("sf_session");
+    if (!stored) return;
+    try {
+      const sess = JSON.parse(stored);
+      if (sess.accessCode !== workspaceCode) return;
+      fetch(`/api/template?workspaceId=${sess.workspaceId}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (Array.isArray(d.templates)) setTemplates(d.templates);
+        })
+        .catch(() => {});
+    } catch {}
+  }, [workspaceCode]);
+
   const backPath = workspaceCode ? `/workspace/${workspaceCode}` : "/";
 
   const handleCopy = async () => {
@@ -472,6 +493,7 @@ function ResultContent() {
 
   const handleConvert = async (format: ConvertFormat) => {
     setConvertFormat(format);
+    setConvertLabel(formatLabels[format].label);
     setIsConverting(true);
     setConvertError("");
     setConvertResult("");
@@ -481,6 +503,28 @@ function ResultContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fullText, format, videoId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setConvertResult(data.result);
+    } catch (err) {
+      setConvertError(err instanceof Error ? err.message : "변환 중 오류가 발생했습니다.");
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  const handleConvertWithTemplate = async (tpl: { id: string; name: string; prompt: string }) => {
+    setConvertLabel(tpl.name);
+    setIsConverting(true);
+    setConvertError("");
+    setConvertResult("");
+
+    try {
+      const res = await fetch("/api/convert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullText, videoId, customPrompt: tpl.prompt }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -864,6 +908,39 @@ function ResultContent() {
                         </button>
                       ))}
                     </div>
+
+                    {workspaceCode && templates.length > 0 && (
+                      <>
+                        <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mt-8 mb-3">
+                          워크스페이스 커스텀 템플릿
+                        </h3>
+                        <div className="grid gap-3">
+                          {templates.map((t) => (
+                            <button
+                              key={t.id}
+                              onClick={() => handleConvertWithTemplate(t)}
+                              className="flex items-center gap-4 p-5 rounded-xl bg-surface border border-border hover:bg-surface-hover hover:border-accent/30 transition-all text-left group"
+                            >
+                              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent-warm/15 to-accent/15 border border-accent/20 flex items-center justify-center flex-shrink-0">
+                                <span className="text-accent font-semibold">★</span>
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="text-sm font-semibold text-foreground group-hover:text-accent transition-colors truncate">
+                                  {t.name}
+                                </h4>
+                                <p className="text-xs text-muted mt-1 line-clamp-2 whitespace-pre-wrap">{t.prompt}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    {workspaceCode && templates.length === 0 && (
+                      <p className="text-xs text-muted/50 mt-6">
+                        팁: 워크스페이스 대시보드에서 커스텀 템플릿을 만들면 여기서 바로 사용할 수 있어요.
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -873,7 +950,7 @@ function ResultContent() {
                       <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
                     </div>
                     <p className="text-muted">
-                      {formatLabels[convertFormat].label}(으)로 변환 중...
+                      {convertLabel}(으)로 변환 중...
                     </p>
                   </div>
                 )}
@@ -891,7 +968,7 @@ function ResultContent() {
                   <div>
                     <div className="flex items-center justify-between mb-6">
                       <span className="text-xs text-accent px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20 font-medium">
-                        {formatLabels[convertFormat].label}
+                        {convertLabel}
                       </span>
                       <button
                         onClick={() => { setConvertResult(""); setConvertError(""); }}
