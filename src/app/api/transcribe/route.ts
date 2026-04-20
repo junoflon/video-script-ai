@@ -8,7 +8,17 @@ import Groq from "groq-sdk";
 
 const execAsync = promisify(exec);
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+let groqClient: Groq | null = null;
+function getGroq(): Groq {
+  if (!groqClient) {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      throw new Error("GROQ_API_KEY가 설정되지 않았습니다. 서버 환경변수를 확인하세요.");
+    }
+    groqClient = new Groq({ apiKey });
+  }
+  return groqClient;
+}
 
 type SourceType = "youtube" | "instagram" | "tiktok" | "file";
 
@@ -119,7 +129,7 @@ async function transcribeWithGroq(audioPath: string): Promise<TranscriptSegment[
   const audioBuffer = await fs.readFile(audioPath);
   const audioFile = new File([audioBuffer], "audio.mp3", { type: "audio/mp3" });
 
-  const response = await groq.audio.transcriptions.create({
+  const response = await getGroq().audio.transcriptions.create({
     file: audioFile,
     model: "whisper-large-v3",
     language: "ko",
@@ -169,7 +179,7 @@ async function transcribeLargeFile(audioPath: string): Promise<TranscriptSegment
     const chunkBuffer = await fs.readFile(chunkPath);
     const audioFile = new File([chunkBuffer], chunk, { type: "audio/mp3" });
 
-    const response = await groq.audio.transcriptions.create({
+    const response = await getGroq().audio.transcriptions.create({
       file: audioFile,
       model: "whisper-large-v3",
       language: "ko",
