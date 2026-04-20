@@ -1,12 +1,16 @@
 FROM node:20-slim
 
-# Install system dependencies
+# Install system dependencies (ffmpeg, python3 for yt-dlp, unzip for deno)
 RUN apt-get update && apt-get install -y \
   ffmpeg \
   python3 \
   curl \
+  unzip \
+  ca-certificates \
   && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
   && chmod a+rx /usr/local/bin/yt-dlp \
+  && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s -- -y \
+  && ln -sf /usr/local/bin/deno /usr/bin/deno \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 

@@ -74,13 +74,22 @@ async function findYtDlp(): Promise<string> {
   );
 }
 
+function extractorArgs(url: string): string {
+  // YouTube: android client bypasses JS runtime requirement + some bot checks
+  if (/youtube\.com|youtu\.be/.test(url)) {
+    return `--extractor-args "youtube:player_client=android,web"`;
+  }
+  return "";
+}
+
 async function downloadAudio(url: string, tmpDir: string): Promise<string> {
   const outputPath = path.join(tmpDir, "audio.mp3");
   const ytdlp = await findYtDlp();
+  const extArgs = extractorArgs(url);
 
   await execAsync(
-    `${ytdlp} -x --audio-format mp3 --audio-quality 5 -o "${path.join(tmpDir, "audio.%(ext)s")}" "${url}"`,
-    { timeout: 120000 }
+    `${ytdlp} ${extArgs} --no-warnings --no-playlist -x --audio-format mp3 --audio-quality 5 -o "${path.join(tmpDir, "audio.%(ext)s")}" "${url}"`,
+    { timeout: 180000 }
   );
 
   // yt-dlp might create the file with different name
@@ -103,8 +112,9 @@ async function downloadAudio(url: string, tmpDir: string): Promise<string> {
 async function fetchVideoMeta(url: string): Promise<{ title: string; author: string; thumbnailUrl: string } | null> {
   try {
     const ytdlp = await findYtDlp();
+    const extArgs = extractorArgs(url);
     const { stdout } = await execAsync(
-      `${ytdlp} --dump-json --no-download "${url}"`,
+      `${ytdlp} ${extArgs} --no-warnings --dump-json --no-download "${url}"`,
       { timeout: 30000 }
     );
     const data = JSON.parse(stdout);
@@ -320,10 +330,40 @@ export async function POST(request: NextRequest) {
       fullText,
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "변환에 실패했습니다.";
-    return Response.json({ error: msg }, { status: 500 });
+    const raw = error instanceof Error ? error.message : "변환에 실패했습니다.";
+    const friendly = translateError(raw);
+    return Response.json({ error: friendly, raw }, { status: 500 });
   } finally {
     // Cleanup temp directory
     fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+function translateError(msg: string): string {
+  const lower = msg.toLowerCase();
+  if (lower.includes("sign in to confirm") || lower.includes("not a bot")) {
+    return "YouTube가 이 영상을 봇 차단으로 막았어요. 다른 영상으로 시도하거나, 자막이 있는 영상을 사용해 주세요.";
+  }
+  if (lower.includes("video unavailable") || lower.includes("private video")) {
+    return "비공개이거나 삭제된 영상이에요. URL을 확인해 주세요.";
+  }
+  if (lower.includes("age") && lower.includes("restricted")) {
+    return "연령 제한 영상이라 추출할 수 없어요.";
+  }
+  if (lower.includes("geo") || lower.includes("not available in your country")) {
+    return "지역 제한으로 이 서버에서는 접근할 수 없는 영상이에요.";
+  }
+  if (lower.includes("no supported javascript runtime")) {
+    return "서버 구성 문제입니다(JS 런타임 미설치). 관리자에게 문의해 주세요.";
+  }
+  if (lower.includes("yt-dlp") && lower.includes("not found")) {
+    return "서버에 yt-dlp가 설치돼있지 않습니다. 관리자에게 문의해 주세요.";
+  }
+  if (lower.includes("timed out") || lower.includes("timeout")) {
+    return "영상 처리 시간이 초과됐어요. 더 짧은 영상으로 시도해 주세요.";
+  }
+  if (lower.includes("groq_api_key") || lower.includes("anthropic_api_key")) {
+    return "서버 API 키 설정 문제입니다. 관리자에게 문의해 주세요.";
+  }
+  return "영상 처리 중 문제가 발생했어요. 다른 URL로 시도해 보세요.";
 }
