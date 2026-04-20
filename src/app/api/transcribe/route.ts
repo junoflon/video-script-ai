@@ -25,23 +25,43 @@ function detectSource(url: string): SourceType | null {
   return null;
 }
 
+let cachedYtDlpPath: string | null = null;
+
 async function findYtDlp(): Promise<string> {
-  // Check common paths
-  const paths = [
-    "yt-dlp",
+  if (cachedYtDlpPath) return cachedYtDlpPath;
+
+  const candidates = [
     "/usr/local/bin/yt-dlp",
-    "/opt/homebrew/bin/yt-dlp",
     "/usr/bin/yt-dlp",
+    "/opt/homebrew/bin/yt-dlp",
   ];
-  for (const p of paths) {
+
+  for (const p of candidates) {
     try {
+      await fs.access(p);
       await execAsync(`${p} --version`);
+      cachedYtDlpPath = p;
       return p;
     } catch {
       continue;
     }
   }
-  throw new Error("yt-dlp를 찾을 수 없습니다. 서버에 yt-dlp가 설치되어 있는지 확인하세요.");
+
+  try {
+    const { stdout } = await execAsync("command -v yt-dlp || which yt-dlp");
+    const resolved = stdout.trim();
+    if (resolved) {
+      await execAsync(`${resolved} --version`);
+      cachedYtDlpPath = resolved;
+      return resolved;
+    }
+  } catch {
+    /* fall through */
+  }
+
+  throw new Error(
+    "yt-dlp를 찾을 수 없습니다. 서버 이미지에 yt-dlp가 설치됐는지 확인하세요 (Dockerfile 빌드 여부 포함)."
+  );
 }
 
 async function downloadAudio(url: string, tmpDir: string): Promise<string> {
